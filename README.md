@@ -4,7 +4,8 @@ git 标签 , 分步骤阅读 :\
 [Part1: Docker 的安装与简单操作](https://github.com/yingyuk/docker-tutorial/tree/v1.0.0)\
 [Part2: Docker 容器](https://github.com/yingyuk/docker-tutorial/tree/v1.0.1)\
 [Part3: Docker 服务](https://github.com/yingyuk/docker-tutorial/tree/v1.0.2)\
-[Part4: Docker 集群](https://github.com/yingyuk/docker-tutorial/tree/v1.0.3)
+[Part4: Docker 集群](https://github.com/yingyuk/docker-tutorial/tree/v1.0.3)\
+[Part5: Docker 组合](https://github.com/yingyuk/docker-tutorial/tree/v1.0.4)
 
 ## 安装与配置 Docker
 
@@ -549,3 +550,203 @@ git 标签 , 分步骤阅读 :\
     # 启动
     docker-machine start myvm1 myvm2
     ```
+
+## Docker 组合
+
+Stacks 组合是 Docker 的最高层级\
+它是一组相互依赖管理的服务的集合 ; 比如 : Nodejs 做前端服务器渲染 + Java 做后端接
+口 + MySQL 做数据存储 + Redis 做消息队列 ;\
+单一的 Stack 可以协调好整个应用程序 ; ( 复杂程序可能需要多个 )
+
+* 添加新的服务并重新部署
+
+  1. 修改 `docker-compose.yml`
+
+     添加了一个名叫 `visualizer` 可视化的服务 ,\
+     服务与宿主机共享了一个文件夹 , 并且只部署在集群的管理机上 ;
+
+     ```sh
+     version: "3"
+     services:
+       # 实例名称叫 web
+       web:
+         # 拉取远程镜像
+         # image: username/repo:tag
+         image:  yingyu/hello:v1.0.0
+         # replace username/repo:tag with your name and image details
+         # 替换成你的用户名和仓库,标签
+         deploy:
+           # 创建 5 个实例
+           replicas: 5
+           resources:
+             # 限制
+             limits:
+               # 每个实例最多使用 10% 的 CPU (跨核心)
+               cpus: "0.1"
+               # 每个实例最多使用 50MB的 RAM
+               memory: 50M
+           restart_policy:
+             condition: on-failure
+         ports:
+           # 将宿主机的80端口和实例的80端口绑定
+           # 宿主:实例
+           - "80:80"
+         networks:
+           # 通过 webnet 实现 80 端口负载平衡
+           - webnet
+       ### 从这里开始添加
+       # 可视化
+       visualizer:
+         # 这是一个开源的 docker 实例可视化镜像
+         image: dockersamples/visualizer:stable
+         ports:
+           - "8080:8080"
+         # 与宿主机共享文件夹
+         volumes:
+           # 宿主:实例
+           - "/var/run/docker.sock:/var/run/docker.sock"
+         deploy:
+           # 放置位置
+           placement:
+             # 只放置在管理机上
+             constraints: [node.role == manager]
+         networks:
+           - webnet
+       ### 添加完成
+     networks:
+       # webnet 配置; 没有就使用默认配置
+       webnet:
+     ```
+
+  1. 确保能够与 myvm1 通讯
+
+     ```sh
+     docker-machine ls
+     docker-machine env myvm1
+     eval $(docker-machine env myvm1)
+     ```
+
+  1. 重新部署应用
+
+     ```sh
+     docker stack deploy -c docker-compose.yml getstartedlab
+     # Updating service getstartedlab_web (id: w1jb7vvzald8o21uuxxbwc3oa)
+     # Updating service getstartedlab_visualizer (id: woi34l3qg85wszkcaq5fpn37r)
+     ```
+
+  1. 可视化服务
+
+     ```sh
+     # 查看被部署应用的 ip 地址
+     # 浏览器打开 myvm1 的 8080端口 192.168.99.100:8080
+     docker-machine ls
+     # NAME    ACTIVE   DRIVER       STATE     URL                         SWARM   DOCKER        ERRORS
+     # myvm1   *        virtualbox   Running   tcp://192.168.99.100:2376           v17.11.0-ce
+     # myvm2   -        virtualbox   Running   tcp://192.168.99.101:2376           v17.11.0-ce
+     ```
+
+* 持久化数据
+
+  1. 修改 `docker-compose.yml`
+
+     添加了一个 `redis` 服务 ,\
+     为了防止 redis 容器删除后 , 访问数据丢失 ,\
+     redis 服务与宿主机共享了一个文件夹 , 并且只部署在集群的管理机上 ;
+
+     ```yml
+     version: "3"
+     services:
+       # 实例名称叫 web
+       web:
+         # 拉取远程镜像
+         # image: username/repo:tag
+         image:  yingyu/hello:v1.0.0
+         # replace username/repo:tag with your name and image details
+         # 替换成你的用户名和仓库,标签
+         deploy:
+           # 创建 5 个实例
+           replicas: 5
+           resources:
+             # 限制
+             limits:
+               # 每个实例最多使用 10% 的 CPU (跨核心)
+               cpus: "0.1"
+               # 每个实例最多使用 50MB的 RAM
+               memory: 50M
+           restart_policy:
+             condition: on-failure
+         ports:
+           # 将宿主机的80端口和实例的80端口绑定
+           # 宿主:实例
+           - "80:80"
+         networks:
+           # 通过 webnet 实现 80 端口负载平衡
+           - webnet
+       # 可视化
+       visualizer:
+         # 这是一个开源的 docker 实例可视化镜像
+         image: dockersamples/visualizer:stable
+         ports:
+           - "8080:8080"
+         # 与宿主机共享文件夹
+         volumes:
+           # 宿主:实例
+           - "/var/run/docker.sock:/var/run/docker.sock"
+         deploy:
+           # 放置位置
+           placement:
+             # 只放置在管理机上
+             constraints: [node.role == manager]
+         networks:
+           - webnet
+       ### 从这里开始添加
+       redis:
+         image: redis
+         ports:
+           - "6379:6379"
+         # 与宿主机共享文件夹, 避免 redis 容器删除后, 访问数据丢失
+         volumes:
+           - /home/docker/data:/data
+         deploy:
+           placement:
+             # 只放置在管理机上
+             constraints: [node.role == manager]
+         command: redis-server --appendonly yes
+         networks:
+           - webnet
+       ### 添加完成
+     networks:
+       # webnet 配置; 没有就使用默认配置
+       webnet:
+     ```
+
+  1. 在管理机上创建 `./data` 文件夹
+
+     ```sh
+     docker-machine ssh myvm1 "mkdir ./data"
+     ```
+
+  1. 确保能够与 myvm1 通讯
+
+     ```sh
+     docker-machine ls
+     docker-machine env myvm1
+     eval $(docker-machine env myvm1)
+     ```
+
+  1. 重新部署应用
+
+     ```sh
+     docker stack deploy -c docker-compose.yml getstartedlab
+     ```
+
+  1. 查看
+
+     ```sh
+     # 查看被部署应用的 ip 地址
+     # 浏览器打开 192.168.99.100
+     docker-machine ls
+     # NAME    ACTIVE   DRIVER       STATE     URL                         SWARM   DOCKER        ERRORS
+     # myvm1   *        virtualbox   Running   tcp://192.168.99.100:2376           v17.11.0-ce
+     # myvm2   -        virtualbox   Running   tcp://192.168.99.101:2376           v17.11.0-ce
+     ```

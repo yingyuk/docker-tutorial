@@ -26,6 +26,39 @@ services:
     networks:
       # 通过 webnet 实现 80 端口负载平衡
       - webnet
+  # 可视化
+  visualizer:
+    # 这是一个开源的 docker 实例可视化镜像
+    image: dockersamples/visualizer:stable
+    ports:
+      - "8080:8080"
+    # 与宿主机共享文件夹
+    volumes:
+      # 宿主:实例
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    deploy:
+      # 放置位置
+      placement:
+        # 只放置在管理机上
+        constraints: [node.role == manager]
+    networks:
+      - webnet
+  ### 从这里开始添加
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+    # 与宿主机共享文件夹, 避免 redis 容器删除后, 访问数据丢失      
+    volumes:
+      - /home/docker/data:/data
+    deploy:
+      placement:
+        # 只放置在管理机上      
+        constraints: [node.role == manager]
+    command: redis-server --appendonly yes
+    networks:
+      - webnet  
+  ### 添加完成
 networks:
   # webnet 配置; 没有就使用默认配置
   webnet:
