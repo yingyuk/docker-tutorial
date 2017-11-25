@@ -1,0 +1,31 @@
+version: "3"
+services:
+  # 实例名称叫 web
+  web:
+    # 拉取远程镜像
+    # image: username/repo:tag
+    image:  yingyu/hello:v1.0.0
+    # replace username/repo:tag with your name and image details
+    # 替换成你的用户名和仓库,标签
+    deploy:
+      # 创建 5 个实例
+      replicas: 5
+      resources:
+        # 限制 
+        limits:
+          # 每个实例最多使用 10% 的 CPU (跨核心)
+          cpus: "0.1"
+          # 每个实例最多使用 50MB的 RAM
+          memory: 50M
+      restart_policy:
+        condition: on-failure
+    ports:
+      # 将宿主机的80端口和实例的80端口绑定
+      # 宿主:实例
+      - "80:80"
+    networks:
+      # 通过 webnet 实现 80 端口负载平衡
+      - webnet
+networks:
+  # webnet 配置; 没有就使用默认配置
+  webnet:

@@ -2,7 +2,8 @@
 
 git 标签 , 分步骤阅读 :\
 [Part1: Docker 的安装与简单操作](https://github.com/yingyuk/docker-tutorial/tree/v1.0.0)\
-[Part2: Docker 容器](https://github.com/yingyuk/docker-tutorial/tree/v1.0.1)
+[Part2: Docker 容器](https://github.com/yingyuk/docker-tutorial/tree/v1.0.1)\
+[Part3: Docker 服务](https://github.com/yingyuk/docker-tutorial/tree/v1.0.2)
 
 ## 安装与配置 Docker
 
@@ -279,4 +280,100 @@ git 标签 , 分步骤阅读 :\
   ```sh
   # docker run -p 4000:80 yingyu/hello:v1.0.0
   docker run -p 4000:80 username/repository:tag
+  ```
+
+## Docker 服务
+
+* 创建 `docker-compose.yml` 文件
+
+  ```sh
+  touch docker-compose.yml
+  vi docker-compose.yml
+  ```
+
+  docker-compose.yml
+
+  ```yml
+  version: "3"
+  services:
+    # 实例名称叫 web
+    web:
+      # 拉取远程镜像
+      image:  yingyu/hello:v1.0.0
+      # image: username/repo:tag
+      # replace username/repo:tag with your name and image details
+      # 替换成你的用户名和仓库,标签
+      deploy:
+        # 创建 5 个实例
+        replicas: 5
+        resources:
+          # 限制
+          limits:
+            # 每个实例最多使用 10% 的 CPU (跨核心)
+            cpus: "0.1"
+            # 每个实例最多使用 50MB的 RAM
+            memory: 50M
+        restart_policy:
+          condition: on-failure
+      ports:
+        # 将宿主机的80端口和实例的80端口绑定
+        # 宿主:实例
+        - "80:80"
+      networks:
+        # 通过 webnet 实现 80 端口负载平衡
+        - webnet
+  networks:
+    # webnet 配置; 没有就使用默认配置
+    webnet:
+  ```
+
+* 运行负载平衡程序
+
+  ```sh
+  # 初始化
+  docker swarm init
+
+  # 运行
+  # docker stack deploy -c docker-compose.yml 服务名称的前缀
+  docker stack deploy -c docker-compose.yml getstartedlab
+
+  # 查看服务
+  docker service ls
+  # ID                  NAME                MODE                REPLICAS            IMAGE                 PORTS
+  # lkfk28nfbxg4        getstartedlab_web   replicated          5/5                 yingyu/hello:v1.0.0   *:80->80/tcp
+
+  # 运行在服务中的单个容器叫做 Task 任务
+  # 查看 getstartedlab_web 服务的任务列表
+  docker service ps getstartedlab_web
+
+  # 同样的, 查看容器列表, 也会显示刚刚的 Task; Task 是容器
+  docker container ls -q
+
+  # 连续使用 curl 通过 ipv4 多次访问本地 80 端口; 或者使用浏览器多次访问 http://localhost
+  curl -4 http://localhost
+  curl -4 http://localhost
+  curl -4 http://localhost
+  # 你会发现每次的 Hostname 都不相同; 这是使用了负载平衡导致的结果
+  # 对到来的每个请求, 会循环的选择 5个 Task 中的一个来响应
+  ```
+
+* 拓展应用程序规模
+
+  ```sh
+  # 你可以更改 docker-compose.yml 中的 replicas (实例数量) ; 然后重新运行
+  # 比如将 replicas 改为 4
+  docker stack deploy -c docker-compose.yml getstartedlab
+  # docker 会就地更新
+
+  docker container ls -q
+  ```
+
+* 移除应用程序和集群
+
+  ```sh
+  # 移除 应用栈
+  docker stack rm getstartedlab
+
+  # 移除 集群
+  docker swarm leave --force
   ```
