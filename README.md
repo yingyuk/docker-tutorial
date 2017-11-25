@@ -3,7 +3,8 @@
 git 标签 , 分步骤阅读 :\
 [Part1: Docker 的安装与简单操作](https://github.com/yingyuk/docker-tutorial/tree/v1.0.0)\
 [Part2: Docker 容器](https://github.com/yingyuk/docker-tutorial/tree/v1.0.1)\
-[Part3: Docker 服务](https://github.com/yingyuk/docker-tutorial/tree/v1.0.2)
+[Part3: Docker 服务](https://github.com/yingyuk/docker-tutorial/tree/v1.0.2)\
+[Part4: Docker 集群](https://github.com/yingyuk/docker-tutorial/tree/v1.0.3)
 
 ## 安装与配置 Docker
 
@@ -377,3 +378,174 @@ git 标签 , 分步骤阅读 :\
   # 移除 集群
   docker swarm leave --force
   ```
+
+## Docker 集群
+
+集群是运行在 docker 上的一组机器 ; 集群中的机器可以是物理机也可以是虚拟机 .\
+ 加入集群后 , 它们被称为节点 nodes.\
+ 集群管理者可以用一些命令运行容器 ; 比如 `emptiest node` 将容器运行在最闲的机器
+上 .\
+
+一个集群中只有一台集群管理者 , 只有在它上面才能执行你的命令或者让其他机器加入到
+这个集群中来 ;\
+ 而集群中的其他机器可以称为工人 , 只出卖劳动力 ;\
+ 而管理者才有权利使唤其他工人可以做什么 , 不可以做什么 ;\
+
+前面的例子中 , 只是使用 Docker 的单一模式 , 运行在一台主机上 ; 然而 Docker 也是
+可以切换到 集群模式的 ;
+
+* 创建多台虚拟机
+
+  [下载 Virtualbox](https://www.virtualbox.org/wiki/Downloads) 用于创建多个虚拟
+  机
+
+  用 `docker-machine` 创建两个虚拟机
+
+  ```sh
+  # 如果下载虚拟机镜像很慢, 或者网络故障; 可以使用网络全局代理;或者可以将镜像地址张贴到浏览器使用代理下载
+  # 再把下载的文件粘贴到对应的路径下; 重新执行命令
+  # Mac下的路径是  ~/.docker/machine/cache
+  # (myvm1) Downloading /Users/yingyuwu/.docker/machine/cache/boot2docker.iso from https://github.com/boot2docker/boot2docker/releases/download/v17.11.0-ce/boot2docker.iso...
+  docker-machine create --driver virtualbox myvm1
+  docker-machine create --driver virtualbox myvm2
+
+  # 查看机器列表
+  docker-machine ls
+  # NAME    ACTIVE   DRIVER       STATE     URL                         SWARM   DOCKER        ERRORS
+  # myvm1   -        virtualbox   Running   tcp://192.168.99.100:2376           v17.11.0-ce
+  # myvm2   -        virtualbox   Running   tcp://192.168.99.101:2376           v17.11.0-ce
+  ```
+
+* 初始化集群并添加节点
+
+  集群是由多个节点组成 , 运行 `docker swarm init` 启用集群模式 , 并将当前机器设
+  为管理者 ;\
+   在其他机器上运行 `docker swarm join` 将自己加入到已存在的集群中去 ;
+
+  ```sh
+  # 将 myvm1 设为管理者
+  # 通过 ssh 进入myvm1, 然后执行命令
+  docker-machine ssh myvm1 "docker swarm init --advertise-addr 替换成myvm1的ip"
+  # docker-machine ssh myvm1 "docker swarm init --advertise-addr 192.168.99.100"
+
+  # 打印日志如下
+  # Swarm initialized: current node (8cagxzbbi01gboug2cx2dt6ol) is now a manager.
+
+  # To add a worker to this swarm, run the following command:
+
+  # 在其他机器上, 通过执行这句加入到 myvm1 的集群中来
+  #     docker swarm join --token SWMTKN-1-67r6t6ptmmt6jd8uhoqdqwnsj7ykuocgt0jemuxehqhwt0jxme-89n4a3tx1d0305d4m5s9ig3nv 192.168.99.100:2377
+
+  # To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+  ```
+
+  将 myvm2 加入到 myvm1 的集群中去
+
+  ```sh
+  docker-machine ssh myvm2 "docker swarm join \
+  --token <token> \
+  <ip>:2377"
+  # docker-machine ssh myvm2 "docker swarm join \
+  # --token SWMTKN-1-67r6t6ptmmt6jd8uhoqdqwnsj7ykuocgt0jemuxehqhwt0jxme-89n4a3tx1d0305d4m5s9ig3nv \
+  # 192.168.99.100:2377"
+
+  # 加入 myvm1 集群成功
+  # This node joined a swarm as a worker.
+  ```
+
+* 在集群上部署应用
+
+  注意只有管理者才能执行你的 Docker 命令 , 所以我们选择 myvm1;
+
+  通过 `docker-machine env myvm1` 获取与 myvm1 通讯的命令
+
+  ```sh
+  docker-machine env myvm1
+  # export DOCKER_TLS_VERIFY="1"
+  # export DOCKER_HOST="tcp://192.168.99.100:2376"
+  # export DOCKER_CERT_PATH="/Users/yingyuwu/.docker/machine/machines/myvm1"
+  # export DOCKER_MACHINE_NAME="myvm1"
+  # # Run this command to configure your shell:
+  # # eval $(docker-machine env myvm1)
+  ```
+
+  运行打印出来的命令 , 来配置 shell , 取得与 myvm1 的通讯
+
+  ```sh
+  eval $(docker-machine env myvm1)
+
+  # 确保已经与 myvm1 联系上, 通过 * 号标识
+  docker-machine ls
+  # NAME    ACTIVE   DRIVER       STATE     URL                         SWARM   DOCKER        ERRORS
+  # myvm1   *        virtualbox   Running   tcp://192.168.99.100:2376           v17.11.0-ce
+  # myvm2   -        virtualbox   Running   tcp://192.168.99.101:2376           v17.11.0-ce
+  ```
+
+* 在集群管理者上部署应用
+
+  先确保当前目录下是之前编写 docker-compose.yml 的目录 ;
+
+  部署应用到 myvm1
+
+  ```sh
+  docker stack deploy -c docker-compose.yml getstartedlab
+
+  # 查看部署结果
+  # 你会发现 5 个实例, 分别部署在两台虚拟机上
+  # j2fi42wrqrp7        getstartedlab_web.1       yingyu/hello:v1.0.0   myvm1               Running             Preparing about a minute ago
+  # c4e9s9oerfif        getstartedlab_web.2       yingyu/hello:v1.0.0   myvm1               Running             Preparing 6 seconds ago
+  # ho2fnv8ljhzw        getstartedlab_web.3       yingyu/hello:v1.0.0   myvm2               Running             Preparing 57 seconds ago
+  # ky1pfuqhqz80        getstartedlab_web.4       yingyu/hello:v1.0.0   myvm1               Running             Preparing 4 seconds ago
+  # iknhcgbuwnr1        getstartedlab_web.5       yingyu/hello:v1.0.0   myvm2               Running             Preparing about a minute ago
+  ```
+
+  在浏览器中输入 myvm1 或者 myvm2 的 ip 地址 , 多刷新几次 , 会发现 5 个实例都能
+  访问到
+
+* 应用的迭代和拓展
+
+  修改 `docker-compose.yml` 文件 ;\
+  或者修改代码文件 `app.py`;\
+
+  然后按照上面教程的步骤 \
+  `docker build xxx`\
+  `docker push xxx`\
+  `docker stack deploy xxx`
+
+* 清理和重启
+
+  * 应用程序
+
+    ```sh
+    # 栈移除 (移除应用程序)
+    docker stack rm getstartedlab
+    ```
+
+  * 集群清理
+
+    ```sh
+    # 为了后续教程 , 暂时不要执行这两句命令
+    # docker-machine ssh myvm2 "docker swarm leave"
+
+    # 管理者需要加 --force
+    # docker-machine ssh myvm1 "docker swarm leave --force"
+    ```
+
+  * 取消 docker-machine shell 变量设置
+
+    ```sh
+    eval $(docker-machine env -u)
+    ```
+
+  * 重启 Docker machines
+
+    ```sh
+    # 查看机器
+    docker-machine ls
+
+    # 停止
+    docker-machine stop myvm1 myvm2
+
+    # 启动
+    docker-machine start myvm1 myvm2
+    ```
